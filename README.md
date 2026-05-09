@@ -12,7 +12,7 @@ Add the package to your `Package.swift`:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/pabelsaldivar/TrelloCreatorContentKit", from: "1.0.0"),
+    .package(url: "https://github.com/pabelsaldivar/swift-trello", from: "1.0.0"),
 ],
 ```
 
@@ -22,7 +22,7 @@ Then add `TrelloClient` as a dependency of your target:
 .target(
     name: "YourApp",
     dependencies: [
-        .product(name: "TrelloClient", package: "TrelloCreatorContentKit"),
+        .product(name: "TrelloClient", package: "swift-trello"),
     ]
 ),
 ```
