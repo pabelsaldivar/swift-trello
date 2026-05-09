@@ -1,0 +1,44 @@
+included:
+  - Sources
+  - Tests
+
+excluded:
+  - .build
+  - TrelloWorkflowPlayground.playground
+  - TrelloPlaygroundv0.playground
+
+disabled_rules:
+  - trailing_whitespace
+
+opt_in_rules:
+  - empty_count
+  - empty_string
+  - force_unwrapping
+  - implicitly_unwrapped_optional
+
+line_length:
+  warning: 120
+  error: 160
+
+type_body_length:
+  warning: 300
+  error: 400
+
+function_body_length:
+  warning: 60
+  error: 100
+
+identifier_name:
+  min_length: 2
+  excluded:
+    - id
+    - key
+    - url
+    - cta
+
+custom_rules:
+  no_print_in_library:
+    included: "Sources/PrismabyCore/.*\\.swift"
+    regex: "\\bprint\\("
+    message: "PrismabyCore no debe tener llamadas a print(). Usa un Logger o devuelve el resultado."
+    severity: warning

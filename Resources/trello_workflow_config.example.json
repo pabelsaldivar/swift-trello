@@ -1,0 +1,48 @@
+{
+  "trello": {
+    "apiKey":   "PEGA_AQUI_TU_API_KEY",
+    "apiToken": "PEGA_AQUI_TU_API_TOKEN",
+    "boardId":  "PEGA_AQUI_TU_BOARD_ID"
+  },
+  "lists": {
+    "contentRequests":  "PEGA_AQUI_ID_LISTA_SOLICITUDES",
+    "processedRequests": "PEGA_AQUI_ID_LISTA_PROCESADAS",
+    "createCardsTarget": "PEGA_AQUI_ID_LISTA_DESTINO",
+    "scheduleSource":   "PEGA_AQUI_ID_LISTA_PENDIENTES",
+    "scheduled":        "PEGA_AQUI_ID_LISTA_PROGRAMADAS",
+    "pendingSchedule":  "PEGA_AQUI_ID_LISTA_PENDIENTES_FECHAS"
+  },
+  "files": {
+    "cardsInput":          "cards.json",
+    "scheduleAssignments": "schedule_assignments.json",
+    "inputDirectory":      "TrelloWorkflowPlayground.playground/Resources"
+  },
+  "execution": {
+    "shouldSendToTrello":                false,
+    "shouldMoveSourceCardsAfterPrompt":  false,
+    "scheduleDryRun":                    true
+  },
+  "schedule": {
+    "startDate":  "2026-04-15",
+    "timezone":   "America/Cancun",
+    "maxPostsPerPlatformPerDay": {
+      "x":                 2,
+      "shorts":            1,
+      "reel":              1,
+      "tiktok":            2,
+      "instagram_story":   3,
+      "instagram_post":    1,
+      "facebook_post":     1,
+      "youtube_community": 1,
+      "blog_post":         1,
+      "guide":             1,
+      "editorial":         1,
+      "destination":       1
+    },
+    "restrictedDays":  [],
+    "restrictedDates": []
+  },
+  "localState": {
+    "directory": "LocalState"
+  }
+}

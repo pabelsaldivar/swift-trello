@@ -1,0 +1,33 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Xcode - user-specific
+xcuserdata/
+*.xcuserstate
+
+# Xcode - build products
+build/
+DerivedData/
+
+# Playground logs, prompts y historiales (archivos en raíz de LocalState).
+# IMPORTANTE: blog_posts/, editorial/, guides/ son contenido generado → sí se commitean.
+TrelloWorkflowPlayground.playground/LocalState/*.jsonl
+TrelloWorkflowPlayground.playground/LocalState/*.txt
+TrelloWorkflowPlayground.playground/LocalState/*.json
+
+# Swift Package Manager
+.build/
+Package.resolved
+.swiftpm/
+
+# Secretos locales (nunca commitear credenciales)
+*.local.json
+*.secrets.json
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
