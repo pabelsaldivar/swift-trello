@@ -21,6 +21,10 @@ public struct TrelloCard: Codable {
     public let idList: String?
     /// Labels attached to the card.
     public let labels: [TrelloLabel]?
+    /// Trello member IDs assigned to the card.
+    public let idMembers: [String]?
+    /// ISO 8601 start date string (e.g. `"2026-05-14T10:00:00.000Z"`).
+    public let start: String?
 
     public init(
         id: String,
@@ -30,7 +34,9 @@ public struct TrelloCard: Codable {
         url: String? = nil,
         due: String? = nil,
         idList: String? = nil,
-        labels: [TrelloLabel]? = nil
+        labels: [TrelloLabel]? = nil,
+        idMembers: [String]? = nil,
+        start: String? = nil
     ) {
         self.id = id
         self.name = name
@@ -40,5 +46,7 @@ public struct TrelloCard: Codable {
         self.due = due
         self.idList = idList
         self.labels = labels
+        self.idMembers = idMembers
+        self.start = start
     }
 }
