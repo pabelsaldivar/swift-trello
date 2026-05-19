@@ -194,6 +194,9 @@ public actor TrelloAPIClient {
         if let name = update.name {
             bodyParams["name"] = name
         }
+        if let desc = update.desc {
+            bodyParams["desc"] = desc
+        }
 
         // Nothing to update.
         if queryItems.isEmpty && bodyParams.isEmpty { return }

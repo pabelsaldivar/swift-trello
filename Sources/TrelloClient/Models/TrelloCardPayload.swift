@@ -39,6 +39,8 @@ public struct TrelloCardPayload {
 public struct TrelloCardUpdate {
     /// New card title, or `nil` to leave it unchanged.
     public let name: String?
+    /// New card description body, or `nil` to leave it unchanged.
+    public let desc: String?
     /// Due date action: set a date or clear the existing one.
     /// Pass `nil` to leave the due date unchanged.
     public let due: TrelloDue?
@@ -47,10 +49,12 @@ public struct TrelloCardUpdate {
 
     public init(
         name: String? = nil,
+        desc: String? = nil,
         due: TrelloDue? = nil,
         idList: String? = nil
     ) {
         self.name = name
+        self.desc = desc
         self.due = due
         self.idList = idList
     }
