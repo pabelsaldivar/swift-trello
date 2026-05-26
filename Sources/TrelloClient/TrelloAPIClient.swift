@@ -223,14 +223,14 @@ public actor TrelloAPIClient {
     /// - Parameters:
     ///   - cardId: Trello card identifier.
     ///   - text: Full comment body in Markdown/plain text.
-    public func addComment(cardId: String, text: String) async throws {
+    /// - Returns: The created `TrelloComment` (including its `id`).
+    @discardableResult
+    public func addComment(cardId: String, text: String) async throws -> TrelloComment {
         try validateCredentials()
 
-        let url = try makeURL(
-            path: "/1/cards/\(cardId)/actions/comments",
-            queryItems: [URLQueryItem(name: "text", value: text)]
-        )
-        try await post(url: url)
+        // Text travels in a form body to avoid HTTP 414 on long comments.
+        let url = try makeURL(path: "/1/cards/\(cardId)/actions/comments")
+        return try await postWithFormBody(url: url, params: ["text": text])
     }
 
     /// Adds an existing label to a card.
@@ -267,9 +267,48 @@ public actor TrelloAPIClient {
         try validateCredentials()
         let url = try makeURL(
             path: "/1/cards/\(cardId)/actions",
-            queryItems: [URLQueryItem(name: "filter", value: "commentCard")]
+            queryItems: [
+                URLQueryItem(name: "filter", value: "commentCard"),
+                URLQueryItem(name: "limit",  value: "1000"),
+                URLQueryItem(name: "member", value: "true")
+            ]
         )
         return try await get(url: url)
+    }
+
+    /// Lists attachments on a card.
+    ///
+    /// - Parameter cardId: Trello card identifier.
+    public func fetchAttachments(cardId: String) async throws -> [TrelloAttachment] {
+        try validateCredentials()
+        let url = try makeURL(path: "/1/cards/\(cardId)/attachments")
+        return try await get(url: url)
+    }
+
+    /// Uploads a file as an attachment on a card.
+    ///
+    /// - Parameters:
+    ///   - cardId: Trello card identifier.
+    ///   - fileData: Raw file bytes.
+    ///   - filename: Display name for the attachment.
+    ///   - mimeType: MIME type (e.g. `"image/png"`). Defaults to `application/octet-stream`.
+    /// - Returns: The created `TrelloAttachment`.
+    @discardableResult
+    public func addAttachment(
+        cardId: String,
+        fileData: Data,
+        filename: String,
+        mimeType: String = "application/octet-stream"
+    ) async throws -> TrelloAttachment {
+        try validateCredentials()
+        let url = try makeURL(path: "/1/cards/\(cardId)/attachments")
+        return try await uploadMultipart(
+            url: url,
+            fieldName: "file",
+            filename: filename,
+            mimeType: mimeType,
+            data: fileData
+        )
     }
 }
 
@@ -355,6 +394,34 @@ private extension TrelloAPIClient {
         request.httpBody = Self.formEncode(params)
         let (data, response) = try await session.data(for: request)
         try validate(response: response, data: data)
+    }
+
+    /// Performs a multipart/form-data POST upload and decodes the response.
+    /// Used for endpoints like `/1/cards/:id/attachments` that accept raw files.
+    func uploadMultipart<T: Decodable>(
+        url: URL,
+        fieldName: String,
+        filename: String,
+        mimeType: String,
+        data fileData: Data
+    ) async throws -> T {
+        let boundary = "Boundary-\(UUID().uuidString)"
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+
+        var body = Data()
+        // Use the filename verbatim — the Trello API accepts UTF-8 here.
+        body.append("--\(boundary)\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"\(fieldName)\"; filename=\"\(filename)\"\r\n".data(using: .utf8)!)
+        body.append("Content-Type: \(mimeType)\r\n\r\n".data(using: .utf8)!)
+        body.append(fileData)
+        body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
+        request.httpBody = body
+
+        let (responseData, response) = try await session.data(for: request)
+        try validate(response: response, data: responseData)
+        return try decode(T.self, from: responseData)
     }
 
     /// Form-encodes a parameter dictionary using `URLComponents` so the encoding
