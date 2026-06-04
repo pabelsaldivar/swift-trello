@@ -125,6 +125,23 @@ public actor TrelloAPIClient {
         return try await get(url: url)
     }
 
+    /// Fetches a single card **with its labels**.
+    ///
+    /// Needed for idempotent write-back: read the current `desc` and `labels`
+    /// before updating so human edits are preserved and only managed values
+    /// change.
+    ///
+    /// - Parameter cardId: Trello card identifier.
+    /// - Returns: The `TrelloCard` with `labels` populated (`labels=all`).
+    public func fetchCard(cardId: String) async throws -> TrelloCard {
+        try validateCredentials()
+        let url = try makeURL(path: "/1/cards/\(cardId)", queryItems: [
+            URLQueryItem(name: "fields", value: "id,name,desc,idList,shortUrl,url,due,idMembers,start"),
+            URLQueryItem(name: "labels", value: "all")
+        ])
+        return try await get(url: url)
+    }
+
     // MARK: Cards — writes
 
     /// Creates a new card and returns its Trello identifier.
@@ -310,6 +327,79 @@ public actor TrelloAPIClient {
             data: fileData
         )
     }
+
+    /// Attaches a **remote URL** to a card (no file upload).
+    ///
+    /// - Parameters:
+    ///   - cardId: Trello card identifier.
+    ///   - attachmentURL: The URL to attach.
+    ///   - name: Optional display name for the attachment.
+    /// - Returns: The created `TrelloAttachment`.
+    @discardableResult
+    public func addAttachmentURL(
+        cardId: String,
+        url attachmentURL: String,
+        name: String? = nil
+    ) async throws -> TrelloAttachment {
+        try validateCredentials()
+        var items = [URLQueryItem(name: "url", value: attachmentURL)]
+        if let name { items.append(URLQueryItem(name: "name", value: name)) }
+        let url = try makeURL(path: "/1/cards/\(cardId)/attachments", queryItems: items)
+        return try await post(url: url)
+    }
+
+    // MARK: Custom Fields
+
+    /// Fetches the Custom Field definitions on a board (text/number/date/
+    /// checkbox/list). For `list` fields, `options` holds the allowed values.
+    ///
+    /// - Parameter boardId: Trello board identifier.
+    public func fetchCustomFields(boardId: String) async throws -> [TrelloCustomField] {
+        try validateCredentials()
+        let url = try makeURL(path: "/1/boards/\(boardId)/customFields")
+        return try await get(url: url)
+    }
+
+    /// Fetches the Custom Field *values* currently set on a card.
+    ///
+    /// Use this to compute a delta before writing (idempotent updates).
+    ///
+    /// - Parameter cardId: Trello card identifier.
+    public func fetchCardCustomFieldItems(cardId: String) async throws -> [TrelloCustomFieldItem] {
+        try validateCredentials()
+        let url = try makeURL(path: "/1/cards/\(cardId)/customFieldItems")
+        return try await get(url: url)
+    }
+
+    /// Sets a **text** Custom Field value on a card.
+    public func setCustomFieldText(cardId: String, fieldId: String, text: String) async throws {
+        try await setCustomFieldValue(cardId: cardId, fieldId: fieldId, key: "text", value: text)
+    }
+
+    /// Sets a **number** Custom Field value on a card.
+    public func setCustomFieldNumber(cardId: String, fieldId: String, number: Double) async throws {
+        try await setCustomFieldValue(cardId: cardId, fieldId: fieldId, key: "number", value: String(number))
+    }
+
+    /// Sets a **checkbox** Custom Field value on a card.
+    public func setCustomFieldChecked(cardId: String, fieldId: String, checked: Bool) async throws {
+        try await setCustomFieldValue(cardId: cardId, fieldId: fieldId, key: "checked", value: checked ? "true" : "false")
+    }
+
+    /// Selects a **list** Custom Field option on a card (by option id).
+    public func setCustomFieldOption(cardId: String, fieldId: String, optionId: String) async throws {
+        try validateCredentials()
+        let url = try makeURL(path: "/1/cards/\(cardId)/customField/\(fieldId)/item")
+        let body = try JSONSerialization.data(withJSONObject: ["idValue": optionId])
+        try await putJSON(url: url, jsonBody: body)
+    }
+
+    private func setCustomFieldValue(cardId: String, fieldId: String, key: String, value: String) async throws {
+        try validateCredentials()
+        let url = try makeURL(path: "/1/cards/\(cardId)/customField/\(fieldId)/item")
+        let body = try JSONSerialization.data(withJSONObject: ["value": [key: value]])
+        try await putJSON(url: url, jsonBody: body)
+    }
 }
 
 // MARK: - Private networking helpers
@@ -436,6 +526,19 @@ private extension TrelloAPIClient {
     func put(url: URL) async throws {
         var request = URLRequest(url: url)
         request.httpMethod = "PUT"
+        let (data, response) = try await session.data(for: request)
+        try validate(response: response, data: data)
+    }
+
+    /// Performs a `PUT` with a JSON body (no response body expected).
+    ///
+    /// Used for Custom Field values, which the Trello API expects as JSON
+    /// (`{"value": {"text": "..."}}` or `{"idValue": "..."}`), not form-encoded.
+    func putJSON(url: URL, jsonBody: Data) async throws {
+        var request = URLRequest(url: url)
+        request.httpMethod = "PUT"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = jsonBody
         let (data, response) = try await session.data(for: request)
         try validate(response: response, data: data)
     }
