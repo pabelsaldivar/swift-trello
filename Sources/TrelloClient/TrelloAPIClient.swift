@@ -268,6 +268,101 @@ public actor TrelloAPIClient {
         )
         return try await get(url: url)
     }
+
+    /// Fetches a single card **with its labels** — needed to write idempotently
+    /// and to preserve human edits (read current `desc` + `labels` before
+    /// updating).
+    public func fetchCard(cardId: String) async throws -> TrelloCard {
+        try validateCredentials()
+        let url = try makeURL(path: "/1/cards/\(cardId)", queryItems: [
+            URLQueryItem(name: "fields", value: "id,name,desc,idList,shortUrl,url,due"),
+            URLQueryItem(name: "labels", value: "all")
+        ])
+        return try await get(url: url)
+    }
+
+    // MARK: Custom Fields
+
+    /// Fetches the Custom Field definitions on a board.
+    public func fetchCustomFields(boardId: String) async throws -> [TrelloCustomField] {
+        try validateCredentials()
+        let url = try makeURL(path: "/1/boards/\(boardId)/customFields")
+        return try await get(url: url)
+    }
+
+    /// Fetches the Custom Field *values* currently set on a card (for idempotent writes).
+    public func fetchCardCustomFieldItems(cardId: String) async throws -> [TrelloCustomFieldItem] {
+        try validateCredentials()
+        let url = try makeURL(path: "/1/cards/\(cardId)/customFieldItems")
+        return try await get(url: url)
+    }
+
+    /// Sets a **text** Custom Field value on a card.
+    public func setCustomFieldText(cardId: String, fieldId: String, text: String) async throws {
+        try await setCustomFieldValue(cardId: cardId, fieldId: fieldId, key: "text", value: text)
+    }
+
+    /// Sets a **number** Custom Field value on a card.
+    public func setCustomFieldNumber(cardId: String, fieldId: String, number: Double) async throws {
+        try await setCustomFieldValue(cardId: cardId, fieldId: fieldId, key: "number", value: String(number))
+    }
+
+    /// Sets a **checkbox** Custom Field value on a card.
+    public func setCustomFieldChecked(cardId: String, fieldId: String, checked: Bool) async throws {
+        try await setCustomFieldValue(cardId: cardId, fieldId: fieldId, key: "checked", value: checked ? "true" : "false")
+    }
+
+    /// Selects a **list** Custom Field option on a card (by option id).
+    public func setCustomFieldOption(cardId: String, fieldId: String, optionId: String) async throws {
+        try validateCredentials()
+        let url = try makeURL(path: "/1/cards/\(cardId)/customField/\(fieldId)/item")
+        let body = try JSONSerialization.data(withJSONObject: ["idValue": optionId])
+        try await putJSON(url: url, jsonBody: body)
+    }
+
+    private func setCustomFieldValue(cardId: String, fieldId: String, key: String, value: String) async throws {
+        try validateCredentials()
+        let url = try makeURL(path: "/1/cards/\(cardId)/customField/\(fieldId)/item")
+        let body = try JSONSerialization.data(withJSONObject: ["value": [key: value]])
+        try await putJSON(url: url, jsonBody: body)
+    }
+
+    // MARK: Attachments
+
+    /// Lists the attachments on a card (to avoid re-uploading the same file).
+    public func fetchAttachments(cardId: String) async throws -> [TrelloAttachment] {
+        try validateCredentials()
+        let url = try makeURL(path: "/1/cards/\(cardId)/attachments")
+        return try await get(url: url)
+    }
+
+    /// Uploads a **local file** as an attachment (e.g. the hero cut). When
+    /// `setCover` is `true`, Trello makes it the card cover → visual board.
+    @discardableResult
+    public func addAttachment(
+        cardId: String,
+        fileURL: URL,
+        name: String? = nil,
+        setCover: Bool = false
+    ) async throws -> TrelloAttachment {
+        try validateCredentials()
+        var items: [URLQueryItem] = []
+        if setCover { items.append(URLQueryItem(name: "setCover", value: "true")) }
+        let url = try makeURL(path: "/1/cards/\(cardId)/attachments", queryItems: items)
+        return try await postMultipart(
+            url: url, fileURL: fileURL, fileName: name ?? fileURL.lastPathComponent
+        )
+    }
+
+    /// Attaches a **remote URL** to a card (no upload).
+    @discardableResult
+    public func addAttachmentURL(cardId: String, url attachmentURL: String, name: String? = nil) async throws -> TrelloAttachment {
+        try validateCredentials()
+        var items = [URLQueryItem(name: "url", value: attachmentURL)]
+        if let name { items.append(URLQueryItem(name: "name", value: name)) }
+        let url = try makeURL(path: "/1/cards/\(cardId)/attachments", queryItems: items)
+        return try await post(url: url)
+    }
 }
 
 // MARK: - Private networking helpers
@@ -376,6 +471,39 @@ private extension TrelloAPIClient {
         request.httpMethod = "DELETE"
         let (data, response) = try await session.data(for: request)
         try validate(response: response, data: data)
+    }
+
+    /// Performs a `PUT` with a JSON body (used for Custom Field values, which
+    /// Trello expects as JSON, not form-encoded).
+    func putJSON(url: URL, jsonBody: Data) async throws {
+        var request = URLRequest(url: url)
+        request.httpMethod = "PUT"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = jsonBody
+        let (data, response) = try await session.data(for: request)
+        try validate(response: response, data: data)
+    }
+
+    /// Uploads a single local file as `multipart/form-data` and decodes the
+    /// response into `T` (used for card attachments).
+    func postMultipart<T: Decodable>(url: URL, fileURL: URL, fileName: String) async throws -> T {
+        let boundary = "Boundary-\(UUID().uuidString)"
+        let fileData = try Data(contentsOf: fileURL)
+
+        var body = Data()
+        body.append(Data("--\(boundary)\r\n".utf8))
+        body.append(Data("Content-Disposition: form-data; name=\"file\"; filename=\"\(fileName)\"\r\n".utf8))
+        body.append(Data("Content-Type: application/octet-stream\r\n\r\n".utf8))
+        body.append(fileData)
+        body.append(Data("\r\n--\(boundary)--\r\n".utf8))
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        request.httpBody = body
+        let (data, response) = try await session.data(for: request)
+        try validate(response: response, data: data)
+        return try decode(T.self, from: data)
     }
 
     // MARK: Response helpers
