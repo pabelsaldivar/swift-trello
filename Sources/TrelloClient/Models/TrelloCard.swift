@@ -25,6 +25,15 @@ public struct TrelloCard: Codable {
     public let idMembers: [String]?
     /// ISO 8601 start date string (e.g. `"2026-05-14T10:00:00.000Z"`).
     public let start: String?
+    /// `true` when the card is archived.
+    ///
+    /// Worth asking for explicitly: Trello's "Delete" archives first and only
+    /// deletes later, and an archived card still answers `200` to both `GET` and
+    /// `PUT`. Without this field a client happily keeps writing to a card the
+    /// user believes they threw away.
+    public let closed: Bool?
+    /// Identifier of the attachment currently used as the card cover.
+    public let idAttachmentCover: String?
 
     public init(
         id: String,
@@ -36,7 +45,9 @@ public struct TrelloCard: Codable {
         idList: String? = nil,
         labels: [TrelloLabel]? = nil,
         idMembers: [String]? = nil,
-        start: String? = nil
+        start: String? = nil,
+        closed: Bool? = nil,
+        idAttachmentCover: String? = nil
     ) {
         self.id = id
         self.name = name
@@ -48,5 +59,7 @@ public struct TrelloCard: Codable {
         self.labels = labels
         self.idMembers = idMembers
         self.start = start
+        self.closed = closed
+        self.idAttachmentCover = idAttachmentCover
     }
 }

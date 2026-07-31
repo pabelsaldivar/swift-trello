@@ -136,7 +136,7 @@ public actor TrelloAPIClient {
     public func fetchCard(cardId: String) async throws -> TrelloCard {
         try validateCredentials()
         let url = try makeURL(path: "/1/cards/\(cardId)", queryItems: [
-            URLQueryItem(name: "fields", value: "id,name,desc,idList,shortUrl,url,due,idMembers,start"),
+            URLQueryItem(name: "fields", value: "id,name,desc,idList,shortUrl,url,due,idMembers,start,closed,idAttachmentCover"),
             URLQueryItem(name: "labels", value: "all")
         ])
         return try await get(url: url)
@@ -310,22 +310,58 @@ public actor TrelloAPIClient {
     ///   - filename: Display name for the attachment.
     ///   - mimeType: MIME type (e.g. `"image/png"`). Defaults to `application/octet-stream`.
     /// - Returns: The created `TrelloAttachment`.
+    /// - Parameter setCover: whether this image becomes the card cover.
+    ///   **Trello defaults to `true`**, which surprises callers that upload
+    ///   several images expecting the first to stay as the cover — the *last*
+    ///   upload silently wins. Pass `false` for every attachment but the one you
+    ///   actually want on the front of the card.
     @discardableResult
     public func addAttachment(
         cardId: String,
         fileData: Data,
         filename: String,
-        mimeType: String = "application/octet-stream"
+        mimeType: String = "application/octet-stream",
+        setCover: Bool? = nil
     ) async throws -> TrelloAttachment {
         try validateCredentials()
         let url = try makeURL(path: "/1/cards/\(cardId)/attachments")
+        var extra: [String: String] = ["name": filename]
+        if let setCover { extra["setCover"] = setCover ? "true" : "false" }
         return try await uploadMultipart(
             url: url,
             fieldName: "file",
             filename: filename,
             mimeType: mimeType,
-            data: fileData
+            data: fileData,
+            extraFields: extra
         )
+    }
+
+    /// Removes an attachment from a card.
+    ///
+    /// The counterpart to `addAttachment` — without it an image can be added but
+    /// never taken back, so any flow that lets someone *edit* a card's images was
+    /// impossible to complete.
+    ///
+    /// - Note: if the removed attachment was the cover, Trello leaves the card
+    ///   without one. Use `setCover(cardId:attachmentId:)` afterwards to promote
+    ///   another image.
+    public func deleteAttachment(cardId: String, attachmentId: String) async throws {
+        try validateCredentials()
+        let url = try makeURL(path: "/1/cards/\(cardId)/attachments/\(attachmentId)")
+        try await delete(url: url)
+    }
+
+    /// Sets — or clears, with `nil` — the card's cover image.
+    ///
+    /// `TrelloCardUpdate` cannot express this: `idAttachmentCover` is not one of
+    /// its fields, so promoting an existing attachment to cover had no route.
+    public func setCover(cardId: String, attachmentId: String?) async throws {
+        try validateCredentials()
+        let url = try makeURL(path: "/1/cards/\(cardId)", queryItems: [
+            URLQueryItem(name: "idAttachmentCover", value: attachmentId ?? "")
+        ])
+        try await put(url: url)
     }
 
     /// Attaches a **remote URL** to a card (no file upload).
@@ -493,21 +529,18 @@ private extension TrelloAPIClient {
         fieldName: String,
         filename: String,
         mimeType: String,
-        data fileData: Data
+        data fileData: Data,
+        extraFields: [String: String] = [:]
     ) async throws -> T {
         let boundary = "Boundary-\(UUID().uuidString)"
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
 
-        var body = Data()
-        // Use the filename verbatim — the Trello API accepts UTF-8 here.
-        body.append("--\(boundary)\r\n".data(using: .utf8)!)
-        body.append("Content-Disposition: form-data; name=\"\(fieldName)\"; filename=\"\(filename)\"\r\n".data(using: .utf8)!)
-        body.append("Content-Type: \(mimeType)\r\n\r\n".data(using: .utf8)!)
-        body.append(fileData)
-        body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
-        request.httpBody = body
+        request.httpBody = Self.multipartBody(
+            boundary: boundary, fieldName: fieldName, filename: filename,
+            mimeType: mimeType, fileData: fileData, extraFields: extraFields
+        )
 
         let (responseData, response) = try await session.data(for: request)
         try validate(response: response, data: responseData)
@@ -575,5 +608,41 @@ private extension TrelloAPIClient {
 private extension String {
     var isPlaceholderOrEmpty: Bool {
         trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || hasPrefix("PEGA_AQUI")
+    }
+}
+
+// MARK: - Multipart
+
+extension TrelloAPIClient {
+
+    /// Builds a `multipart/form-data` body.
+    ///
+    /// Split out so it can be tested without a network round-trip: the field
+    /// ordering below is a correctness requirement, not a style choice.
+    static func multipartBody(
+        boundary: String,
+        fieldName: String,
+        filename: String,
+        mimeType: String,
+        fileData: Data,
+        extraFields: [String: String] = [:]
+    ) -> Data {
+        var body = Data()
+        // Text fields go FIRST. Trello reads `setCover` and `name` alongside the
+        // file part, and a text field placed after the binary payload is parsed
+        // inconsistently — the cover flag silently does nothing.
+        // Sorted so the body is deterministic and diffable in tests.
+        for (key, value) in extraFields.sorted(by: { $0.key < $1.key }) {
+            body.append("--\(boundary)\r\n".data(using: .utf8)!)
+            body.append("Content-Disposition: form-data; name=\"\(key)\"\r\n\r\n".data(using: .utf8)!)
+            body.append("\(value)\r\n".data(using: .utf8)!)
+        }
+        // Use the filename verbatim — the Trello API accepts UTF-8 here.
+        body.append("--\(boundary)\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"\(fieldName)\"; filename=\"\(filename)\"\r\n".data(using: .utf8)!)
+        body.append("Content-Type: \(mimeType)\r\n\r\n".data(using: .utf8)!)
+        body.append(fileData)
+        body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
+        return body
     }
 }

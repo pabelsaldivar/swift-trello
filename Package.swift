@@ -13,5 +13,10 @@ let package = Package(
             dependencies: [],
             path: "Sources/TrelloClient"
         ),
+        .testTarget(
+            name: "TrelloClientTests",
+            dependencies: ["TrelloClient"],
+            path: "Tests/TrelloClientTests"
+        ),
     ]
 )
