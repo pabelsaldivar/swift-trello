@@ -48,6 +48,15 @@ public struct GeneratedCard: Codable {
     /// source card without creating a duplicate.
     public let originalCardId: String?
 
+    /// Canonical URL slug for web content (`blog_post`, `guide`, `editorial`…).
+    ///
+    /// The prompt has always asked for this field with its own regex, and no
+    /// type read it: the value arrived and evaporated. It survived only because
+    /// the prompt also requires `archivo_final` to be exactly the same string,
+    /// so the slug travelled by the other field. That is redundancy by
+    /// accident, not by design — one prompt edit away from silent data loss.
+    public let urlSlug: String?
+
     enum CodingKeys: String, CodingKey {
         case platform
         case platformLabel      = "platform_label"
@@ -62,6 +71,7 @@ public struct GeneratedCard: Codable {
         case imageFormat        = "image_format"
         case numeroPiezas       = "numero_piezas"
         case originalCardId     = "original_card_id"
+        case urlSlug            = "url_slug"
     }
 
     // Custom decoder — all new fields are optional for backward compatibility.
@@ -80,6 +90,7 @@ public struct GeneratedCard: Codable {
         imageFormat        = try c.decodeIfPresent(String.self, forKey: .imageFormat)
         numeroPiezas       = try c.decodeIfPresent(Int.self,    forKey: .numeroPiezas)
         originalCardId     = try c.decodeIfPresent(String.self, forKey: .originalCardId)
+        urlSlug            = try c.decodeIfPresent(String.self, forKey: .urlSlug)
     }
 
     public init(
@@ -95,7 +106,8 @@ public struct GeneratedCard: Codable {
         imagePrompt: String? = nil,
         imageFormat: String? = nil,
         numeroPiezas: Int? = nil,
-        originalCardId: String? = nil
+        originalCardId: String? = nil,
+        urlSlug: String? = nil
     ) {
         self.platform = platform
         self.platformLabel = platformLabel
@@ -110,5 +122,6 @@ public struct GeneratedCard: Codable {
         self.imageFormat = imageFormat
         self.numeroPiezas = numeroPiezas
         self.originalCardId = originalCardId
+        self.urlSlug = urlSlug
     }
 }

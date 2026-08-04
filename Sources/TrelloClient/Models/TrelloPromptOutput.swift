@@ -122,12 +122,22 @@ public struct YouTubePromptOutput: Codable {
     /// 6. `youtube_estrategia`     — Estrategia de publicación
     public let cards: [GeneratedCard]
 
+    /// Release announcement cards, one per network.
+    ///
+    /// The JSON has carried this block for a while and this type did not know
+    /// it, so the consumer had to re-parse the same payload by hand with
+    /// `JSONSerialization` just to reach it — a second reader of the same
+    /// contract, which is how two readers start disagreeing. Optional because
+    /// responses generated before the block existed must keep decoding.
+    public let anuncios: [GeneratedCard]
+
     enum CodingKeys: String, CodingKey {
         case id
         case archivoBase       = "archivo_base"
         case tituloOptimizado  = "titulo_optimizado"
         case youtubeAssets     = "youtube_assets"
         case cards
+        case anuncios
     }
 
     // Custom decoder so `titulo_optimizado` and `youtube_assets` are optional.
@@ -138,14 +148,20 @@ public struct YouTubePromptOutput: Codable {
         tituloOptimizado = try c.decodeIfPresent(String.self, forKey: .tituloOptimizado) ?? ""
         youtubeAssets    = try c.decodeIfPresent(String.self, forKey: .youtubeAssets)    ?? ""
         cards            = try c.decode([GeneratedCard].self, forKey: .cards)
+        // Tolerant on purpose: a malformed announcement must not take down the
+        // whole video output, which carries the master file and the six cards.
+        anuncios         = (try? c.decodeIfPresent([GeneratedCard].self,
+                                                   forKey: .anuncios)) as? [GeneratedCard] ?? []
     }
 
     public init(id: String, archivoBase: String, tituloOptimizado: String = "",
-                youtubeAssets: String = "", cards: [GeneratedCard]) {
+                youtubeAssets: String = "", cards: [GeneratedCard],
+                anuncios: [GeneratedCard] = []) {
         self.id = id
         self.archivoBase = archivoBase
         self.tituloOptimizado = tituloOptimizado
         self.youtubeAssets = youtubeAssets
         self.cards = cards
+        self.anuncios = anuncios
     }
 }
